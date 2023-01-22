@@ -6,12 +6,11 @@
 //
 
 import UIKit
-import RxSwift
-import RxCocoa
+import Combine
 
 class ViewController: UIViewController {
     
-    let disposeBag = DisposeBag()
+    var cancelBag = Set<AnyCancellable>()
     
     let viewModel = JGitHubMainViewModel()
     
@@ -22,20 +21,44 @@ class ViewController: UIViewController {
         super.viewDidLoad()
         // Do any additional setup after loading the view.
         
+        searchTableView.dataSource = self
         bind()
     }
     
+    @objc private func requestSearchRepo() {
+        viewModel.githubSearchModel
+            .publisher
+            .sink(receiveValue: { [weak self] _ in
+                self?.searchTableView.reloadData()
+            })
+            .store(in: &cancelBag)
+    }
+    
     private func bind() {
-        searchButton.rx.tap
-            .bind(to: viewModel.searchingRelay)
-            .disposed(by: disposeBag)
-        
-        viewModel.searchSubject
-            .observe(on: MainScheduler.instance)
-            .bind(to: searchTableView.rx.items(cellIdentifier: "JGitHubMainTableViewCell", cellType: JGitHubMainTableViewCell.self)) { index, item, cell in
-                cell.title.text = item.full_name
-            }
-            .disposed(by: disposeBag)
+        searchButton.addTarget(self,
+                               action: #selector(requestSearchRepo),
+                               for: .touchUpInside)
     }
 }
 
+// MARK: UITableViewDataSource
+
+extension ViewController: UITableViewDataSource {
+    
+    func tableView(_ tableView: UITableView,
+                   numberOfRowsInSection section: Int) -> Int {
+        return viewModel.githubSearchModel?.items.count ?? 0
+    }
+    
+    func tableView(_ tableView: UITableView,
+                   cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+        
+        let cell: JGitHubMainTableViewCell = tableView.dequeueReusableCell(withIdentifier: "JGitHubMainTableViewCell") as! JGitHubMainTableViewCell
+        
+        if let viewModel = viewModel.githubSearchModel {
+            cell.textLabel?.text = viewModel.items[indexPath.row].full_name
+        }
+        
+        return cell
+    }
+}
